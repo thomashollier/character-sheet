@@ -1,26 +1,38 @@
-# Multi-Angle Batch Renderer
+# Multi-Angle & Pose Batch Renderer
 
-Batch-render all camera angle variations of a single image using Qwen Image Edit models on [Comfy Cloud](https://cloud.comfy.org).
+Batch-render camera angle variations and pose transfers from a single image using Qwen Image Edit models on [Comfy Cloud](https://cloud.comfy.org).
 
-When training LoRAs or building 3D assets, you often need systematic multi-angle renders of a subject. Manually running ComfyUI workflows for every azimuth, elevation, and distance combination is tedious. This script automates the entire process — submit one image, get back a complete set of angle variations.
+When training LoRAs or building 3D assets, you often need systematic multi-angle renders or posed variations of a subject. Manually running ComfyUI workflows for every combination is tedious. This script automates the entire process — submit one image, get back a complete set of variations.
 
 ## Supported Pipelines
 
-| Pipeline | Angles LoRA | Unique Poses | Camera Control |
-|----------|-------------|-------------|----------------|
-| **2511** (Nov 2025) | [fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA](https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA) | 96 (8 az x 4 el x 3 dist) | `QwenMultiangleCameraNode` with numeric angles |
-| **2509** (Sep 2025) | [dx8152/Qwen-Edit-2509-Multiple-angles](https://huggingface.co/dx8152/Qwen-Edit-2509-Multiple-angles) | 72 (8 az x 3 el x 3 dist) | Bilingual text prompts |
+| Pipeline | LoRAs | Variations | Method |
+|----------|-------|-----------|--------|
+| **2511** (default) | [fal Multi-Angles](https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA) | 96 (8 az x 4 el x 3 dist) | `QwenMultiangleCameraNode` |
+| **2509** | [dx8152 Multi-Angles](https://huggingface.co/dx8152/Qwen-Edit-2509-Multiple-angles) | 72 (8 az x 3 el x 3 dist) | Bilingual text prompts |
+| **anypose** | [lilylilith/AnyPose](https://huggingface.co/lilylilith/AnyPose) | Per pose image | Pose transfer from reference images |
 
-### Angle Grid
+### Multi-Angle Grid (2511 / 2509)
 
 - **Azimuths** (8): 0, 45, 90, 135, 180, 225, 270, 315 degrees
 - **Elevations** (4 for 2511, 3 for 2509): -30, 0, 30, 60 degrees
 - **Distances** (3): 0.6 (close-up), 1.0 (medium), 1.8 (wide)
 
+### AnyPose
+
+Transfers poses from reference images (OpenPose skeletons, photos, etc.) onto your subject. Pose images are automatically padded to square and background-matched to the reference image before upload.
+
+## Included Pose Images
+
+The `poses/` directory contains OpenPose skeleton images from [Pose Depot](https://github.com/pose-depot/pose-depot):
+
+- `poses/F/` — 61 female pose variations
+- `poses/M/` — 61 male pose variations
+
 ## Setup
 
 ```bash
-pip install aiohttp
+pip install aiohttp Pillow numpy
 export COMFY_CLOUD_API_KEY="your-key-here"  # from https://cloud.comfy.org
 ```
 
@@ -29,11 +41,14 @@ The required models and LoRAs must be available in your Comfy Cloud workspace.
 ## Usage
 
 ```bash
-# 2511 pipeline (default, 96 poses)
+# Multi-angle: 2511 pipeline (default, 96 poses)
 python batch_multi_angle.py --image photo.png --cloud
 
-# 2509 pipeline (72 poses)
+# Multi-angle: 2509 pipeline (72 poses)
 python batch_multi_angle.py --image photo.png --cloud --pipeline 2509
+
+# AnyPose: transfer poses from a directory of pose images
+python batch_multi_angle.py --image photo.png --cloud --pipeline anypose --pose-dir ./poses/F
 
 # Different seed (output dir auto-named by pipeline + seed)
 python batch_multi_angle.py --image photo.png --cloud --seed 123
@@ -41,7 +56,7 @@ python batch_multi_angle.py --image photo.png --cloud --seed 123
 # Append text to every prompt
 python batch_multi_angle.py --image photo.png --cloud --prompt-append "dramatic lighting"
 
-# Render a subset
+# Render a subset of angles
 python batch_multi_angle.py --image photo.png --cloud --azimuths 0,90,180,270 --elevations 0
 
 # Preview all prompts without rendering
@@ -54,7 +69,8 @@ python batch_multi_angle.py --image photo.png --cloud --dry-run
 |------|---------|-------------|
 | `--image` | (required) | Input image path |
 | `--cloud` | off | Use Comfy Cloud (otherwise targets local ComfyUI) |
-| `--pipeline` | `2511` | `2509` or `2511` |
+| `--pipeline` | `2511` | `2509`, `2511`, or `anypose` |
+| `--pose-dir` | — | Directory of pose images (required for `anypose`) |
 | `--output` | auto | Output directory (default: `./multi_angle_output_{pipeline}_seed{seed}`) |
 | `--seed` | `42` | Random seed |
 | `--steps` | `4` | Inference steps (Lightning LoRA tuned for 4) |
@@ -74,9 +90,13 @@ python batch_multi_angle.py --image photo.png --cloud --dry-run
 Images are saved with descriptive filenames:
 
 ```
+# Multi-angle
 az000_el+00_d1.0_front_view_eyelevel_shot_medium_shot.png
 az090_el-30_d0.6_right_side_view_lowangle_shot_closeup.png
-az180_el+30_d1.8_back_view_elevated_shot_wide_shot.png
+
+# AnyPose
+pose_2F_Hand_on_Hip_OpenPoseFull.png
+pose_15F_Flying_Superhero_OpenPoseFull_3.png
 ```
 
 Existing files are automatically skipped, so you can safely re-run to fill in any gaps.
@@ -84,10 +104,10 @@ Existing files are automatically skipped, so you can safely re-run to fill in an
 ## How It Works
 
 1. Uploads the input image to Comfy Cloud
-2. Connects a WebSocket to receive real-time execution results
-3. Submits all angle variation workflows with concurrency control
-4. Downloads completed renders as they finish via the WebSocket output events
-5. Skips any poses that already have output files
+2. For AnyPose: detects reference background color, pre-processes pose images (background match + square padding)
+3. Connects a WebSocket to receive real-time execution results
+4. Submits all workflows with concurrency control
+5. Downloads completed renders as they finish via WebSocket output events
 
 ## License
 

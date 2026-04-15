@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import time
+import tempfile
 import urllib.request
 import urllib.parse
 import uuid
@@ -107,7 +108,23 @@ def safe_filename(azimuth, elevation, distance):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# WORKFLOW BUILDER
+# ANYPOSE DEFAULT PROMPT
+# ═══════════════════════════════════════════════════════════════════════════
+
+ANYPOSE_DEFAULT_PROMPT = (
+    "Make the person in image 1 do the exact same pose of the person in image 2. "
+    "Changing the style and background of the image of the person in image 1 is undesirable, so don't do it. "
+    "The new pose should be pixel accurate to the pose we are trying to copy. "
+    "The position of the arms and head and legs should be the same as the pose we are trying to copy. "
+    "Change the field of view and angle to match exactly image 2. Head tilt and eye gaze pose should match the person in image 2. "
+    "Remove the background of image 2, and replace it with the background of image 1. "
+    "Don't change the identity of the person in image 1, keep their appearance the same, "
+    "it is undesirable to change their facial features or hair style. don't do it."
+)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WORKFLOW BUILDERS
 # ═══════════════════════════════════════════════════════════════════════════
 
 def build_workflow(
@@ -115,12 +132,18 @@ def build_workflow(
     seed=42, steps=4, guidance_scale=1.0,
     lora_strength_lightning=1.0, lora_strength_angles=1.0,
     filename_prefix="multi_angle", pipeline="2511",
+    pose_image_filename=None,
 ):
     """Dispatch to the appropriate pipeline workflow builder."""
     if pipeline == "2509":
         return build_workflow_2509(
             image_filename, prompt, seed, steps, guidance_scale,
             lora_strength_lightning, lora_strength_angles, filename_prefix,
+        )
+    if pipeline == "anypose":
+        return build_workflow_anypose(
+            image_filename, pose_image_filename, prompt, seed, steps,
+            guidance_scale, lora_strength_lightning, filename_prefix,
         )
     return build_workflow_2511(
         image_filename, azimuth, elevation, distance,
@@ -429,6 +452,180 @@ def build_workflow_2509(
     }
 
 
+def build_workflow_anypose(
+    image_filename, pose_image_filename, prompt,
+    seed=42, steps=4, guidance_scale=1.0,
+    lora_strength_lightning=1.0, filename_prefix="anypose",
+    lora_strength_base=0.7, lora_strength_helper=0.7,
+):
+    """
+    Build a ComfyUI API-format workflow for AnyPose pipeline.
+    Takes a reference image and a pose image, transfers the pose.
+    Uses 2511 base model + Lightning + AnyPose base + AnyPose helper LoRAs.
+    """
+    return {
+        # ── Load reference image ──────────────────────────────────
+        "1": {
+            "class_type": "LoadImage",
+            "inputs": {"image": image_filename},
+        },
+        # ── Load pose image ───────────────────────────────────────
+        "2": {
+            "class_type": "LoadImage",
+            "inputs": {"image": pose_image_filename},
+        },
+        # ── Save output ───────────────────────────────────────────
+        "10": {
+            "class_type": "SaveImage",
+            "inputs": {
+                "filename_prefix": filename_prefix,
+                "images": ["9", 0],
+            },
+        },
+        # ── VAE ───────────────────────────────────────────────────
+        "20": {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "qwen_image_vae.safetensors"},
+        },
+        # ── CLIP ──────────────────────────────────────────────────
+        "21": {
+            "class_type": "CLIPLoader",
+            "inputs": {
+                "clip_name": "qwen_2.5_vl_7b.safetensors",
+                "type": "qwen_image",
+                "device": "default",
+            },
+        },
+        # ── Model loading ─────────────────────────────────────────
+        "30": {
+            "class_type": "UNETLoader",
+            "inputs": {
+                "unet_name": "qwen_image_edit_2511_bf16.safetensors",
+                "weight_dtype": "default",
+            },
+        },
+        # ── Lightning LoRA ────────────────────────────────────────
+        "31": {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+                "strength_model": lora_strength_lightning,
+                "model": ["30", 0],
+            },
+        },
+        # ── AnyPose base LoRA ─────────────────────────────────────
+        "32": {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "lora_name": "2511-AnyPose-base-000006250.safetensors",
+                "strength_model": lora_strength_base,
+                "model": ["31", 0],
+            },
+        },
+        # ── AnyPose helper LoRA ───────────────────────────────────
+        "33": {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "lora_name": "2511-AnyPose-helper-00006000.safetensors",
+                "strength_model": lora_strength_helper,
+                "model": ["32", 0],
+            },
+        },
+        # ── Model patching ────────────────────────────────────────
+        "34": {
+            "class_type": "ModelSamplingAuraFlow",
+            "inputs": {
+                "shift": 3.1,
+                "model": ["33", 0],
+            },
+        },
+        "35": {
+            "class_type": "CFGNorm",
+            "inputs": {
+                "strength": guidance_scale,
+                "model": ["34", 0],
+            },
+        },
+        # ── Image scaling (reference) ─────────────────────────────
+        "40": {
+            "class_type": "FluxKontextImageScale",
+            "inputs": {
+                "image": ["1", 0],
+            },
+        },
+        # ── Image scaling (pose) ──────────────────────────────────
+        "41": {
+            "class_type": "FluxKontextImageScale",
+            "inputs": {
+                "image": ["2", 0],
+            },
+        },
+        # ── Positive conditioning (reference + pose images) ───────
+        "50": {
+            "class_type": "TextEncodeQwenImageEditPlus",
+            "inputs": {
+                "prompt": prompt,
+                "clip": ["21", 0],
+                "vae": ["20", 0],
+                "image1": ["40", 0],
+                "image2": ["41", 0],
+            },
+        },
+        # ── Negative conditioning (empty prompt) ──────────────────
+        "51": {
+            "class_type": "TextEncodeQwenImageEditPlus",
+            "inputs": {
+                "prompt": "",
+                "clip": ["21", 0],
+                "vae": ["20", 0],
+                "image1": ["40", 0],
+            },
+        },
+        # ── Reference latent methods ──────────────────────────────
+        "52": {
+            "class_type": "FluxKontextMultiReferenceLatentMethod",
+            "inputs": {
+                "reference_latents_method": "index_timestep_zero",
+                "conditioning": ["50", 0],
+            },
+        },
+        "53": {
+            "class_type": "FluxKontextMultiReferenceLatentMethod",
+            "inputs": {
+                "reference_latents_method": "index_timestep_zero",
+                "conditioning": ["51", 0],
+            },
+        },
+        # ── VAE Encode / Decode ───────────────────────────────────
+        "60": {
+            "class_type": "VAEEncode",
+            "inputs": {
+                "pixels": ["40", 0],
+                "vae": ["20", 0],
+            },
+        },
+        "9": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["70", 0],
+                "vae": ["20", 0],
+            },
+        },
+        # ── KSampler ─────────────────────────────────────────────
+        "70": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": seed, "steps": steps, "cfg": guidance_scale,
+                "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
+                "model": ["35", 0],
+                "positive": ["52", 0],
+                "negative": ["53", 0],
+                "latent_image": ["60", 0],
+            },
+        },
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # LOCAL COMFYUI API  (synchronous, sequential)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -525,6 +722,38 @@ def run_local(jobs, args):
 CLOUD_BASE = "https://cloud.comfy.org"
 
 
+def get_reference_bg_color(image_path):
+    """Get the average edge color of the reference image."""
+    from PIL import Image
+    import numpy as np
+    img = Image.open(image_path).convert("RGB")
+    arr = np.array(img)
+    edges = np.concatenate([arr[0], arr[-1], arr[:, 0], arr[:, -1]])
+    return tuple(edges.mean(axis=0).astype(int))
+
+
+def prep_pose_image(pose_path, bg_color, tmp_dir):
+    """Replace black background with bg_color and pad to square."""
+    from PIL import Image
+    import numpy as np
+    img = Image.open(pose_path).convert("RGB")
+    arr = np.array(img)
+    # Replace black pixels with bg color
+    mask = (arr[:, :, 0] < 15) & (arr[:, :, 1] < 15) & (arr[:, :, 2] < 15)
+    arr[mask] = bg_color
+    img = Image.fromarray(arr)
+    # Pad to square if needed
+    w, h = img.size
+    if w != h:
+        size = max(w, h)
+        square = Image.new("RGB", (size, size), bg_color)
+        square.paste(img, ((size - w) // 2, (size - h) // 2))
+        img = square
+    out = os.path.join(tmp_dir, os.path.basename(pose_path))
+    img.save(out)
+    return out
+
+
 async def cloud_upload(session, api_key, filepath):
     import aiohttp
     filepath = Path(filepath)
@@ -619,7 +848,7 @@ async def _process_batch_ws(jobs, args, api_key, session):
     sem = asyncio.Semaphore(args.concurrency)
     ok, fail = 0, 0
 
-    # Upload image
+    # Upload image(s)
     print("Uploading image to Comfy Cloud...")
     try:
         img_name = await cloud_upload(session, api_key, args.image)
@@ -627,7 +856,25 @@ async def _process_batch_ws(jobs, args, api_key, session):
         sys.exit(f"ERROR: Upload failed — {e}")
     print(f"  Uploaded as: {img_name}\n")
 
-    pid_to_job = {}  # prompt_id -> (idx, fname, out_path)
+    # For AnyPose, pre-process and upload all pose images
+    pose_img_names = {}  # local_path -> cloud_name
+    if args.pipeline == "anypose":
+        pose_paths = sorted(set(j[5] for j in jobs))  # jobs[5] = pose_path
+        bg_color = get_reference_bg_color(args.image)
+        print(f"  Reference bg color: RGB{bg_color}")
+        tmp_dir = tempfile.mkdtemp(prefix="anypose_")
+        print(f"Uploading {len(pose_paths)} pose images (bg-matched)...")
+        for pp in pose_paths:
+            try:
+                prepped = prep_pose_image(pp, bg_color, tmp_dir)
+                pname = await cloud_upload(session, api_key, prepped)
+                pose_img_names[pp] = pname
+                print(f"  ✓ {os.path.basename(pp)} → {pname}")
+            except Exception as e:
+                print(f"  ✗ {os.path.basename(pp)} — {e}")
+        print()
+
+    pid_to_job = {}  # prompt_id -> (idx, fname, out_path, prompt)
     pending = set()
     ws_url = f"wss://cloud.comfy.org/ws?token={api_key}"
 
@@ -643,17 +890,26 @@ async def _process_batch_ws(jobs, args, api_key, session):
         print("  Websocket connected.\n")
 
         # Submit jobs with concurrency limit
-        async def submit_one(idx, az, el, dist, prompt, fname):
+        async def submit_one(idx, job):
+            az, el, dist, prompt, fname = job[:5]
             out = os.path.join(args.output, fname)
             if os.path.exists(out):
                 print(f"  [{idx:3d}/{total}] SKIP  {fname}")
                 return None
             async with sem:
-                print(f"  [{idx:3d}/{total}] → {prompt}")
+                print(f"  [{idx:3d}/{total}] → {prompt[:80]}")
+                pose_cloud_name = None
+                if args.pipeline == "anypose":
+                    pose_path = job[5]
+                    pose_cloud_name = pose_img_names.get(pose_path)
+                    if not pose_cloud_name:
+                        print(f"  [{idx:3d}/{total}] ✗ {fname}  (pose image not uploaded)")
+                        return None
                 wf = build_workflow(img_name, az, el, dist, prompt,
                                     args.seed, args.steps,
                                     args.guidance, args.lora_lightning, args.lora_angles,
-                                    pipeline=args.pipeline)
+                                    pipeline=args.pipeline,
+                                    pose_image_filename=pose_cloud_name)
                 pid = await cloud_submit(session, api_key, wf)
                 pid_to_job[pid] = (idx, fname, out, prompt)
                 pending.add(pid)
@@ -662,8 +918,8 @@ async def _process_batch_ws(jobs, args, api_key, session):
         # Start submitting in background while we listen on websocket
         async def submit_all():
             submit_tasks = []
-            for i, (az, el, dist, prompt, fname) in enumerate(jobs, 1):
-                submit_tasks.append(submit_one(i, az, el, dist, prompt, fname))
+            for i, job in enumerate(jobs, 1):
+                submit_tasks.append(submit_one(i, job))
             results = await asyncio.gather(*submit_tasks)
             active = [p for p in results if p is not None]
             print(f"\n  All {len(active)} jobs submitted.\n", flush=True)
@@ -783,8 +1039,10 @@ def main():
     p.add_argument("--azimuths", default=None, help="Subset, e.g. 0,90,180,270")
     p.add_argument("--elevations", default=None, help="Subset, e.g. -30,0,30,60")
     p.add_argument("--distances", default=None, help="Subset, e.g. 0.6,1.0,1.8")
-    p.add_argument("--pipeline", default="2511", choices=["2509", "2511"],
-                   help="Model pipeline: 2509 (Sep) or 2511 (Nov, default)")
+    p.add_argument("--pipeline", default="2511", choices=["2509", "2511", "anypose"],
+                   help="Model pipeline: 2509, 2511 (default), or anypose")
+    p.add_argument("--pose-dir", default=None,
+                   help="Directory of pose images (required for --pipeline anypose)")
     p.add_argument("--prompt-append", default="",
                    help="String to append to every generated prompt")
     p.add_argument("--dry-run", action="store_true")
@@ -811,31 +1069,59 @@ def main():
         for d in distances:
             assert d in DISTANCE_MAP, f"Bad distance {d}. Valid: {list(DISTANCE_MAP)}"
 
-    prompt_fn = build_prompt_2509 if args.pipeline == "2509" else build_prompt_2511
-    # For 2509, skip duplicate elevations (30° and 60° produce the same prompt)
-    if args.pipeline == "2509" and not args.elevations:
-        elevations = [e for e in elevations if e != 60]
     suffix = f" {args.prompt_append}" if args.prompt_append else ""
-    jobs = [(az, el, dist, prompt_fn(az, el, dist) + suffix, safe_filename(az, el, dist))
-            for az in azimuths for el in elevations for dist in distances]
+
+    if args.pipeline == "anypose":
+        # AnyPose: iterate over pose images from a directory
+        if not args.pose_dir:
+            sys.exit("ERROR: --pose-dir is required for --pipeline anypose")
+        assert os.path.isdir(args.pose_dir), f"Pose directory not found: {args.pose_dir}"
+        pose_files = sorted([
+            f for f in os.listdir(args.pose_dir)
+            if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+        ])
+        assert pose_files, f"No image files found in {args.pose_dir}"
+        prompt = ANYPOSE_DEFAULT_PROMPT + suffix
+        # jobs tuple: (az, el, dist, prompt, fname, pose_path)
+        jobs = [
+            (None, None, None, prompt,
+             f"pose_{os.path.splitext(pf)[0]}.png",
+             os.path.join(args.pose_dir, pf))
+            for pf in pose_files
+        ]
+    else:
+        prompt_fn = build_prompt_2509 if args.pipeline == "2509" else build_prompt_2511
+        # For 2509, skip duplicate elevations (30° and 60° produce the same prompt)
+        if args.pipeline == "2509" and not args.elevations:
+            elevations = [e for e in elevations if e != 60]
+        jobs = [(az, el, dist, prompt_fn(az, el, dist) + suffix, safe_filename(az, el, dist))
+                for az in azimuths for el in elevations for dist in distances]
+
     total = len(jobs)
     mode = "CLOUD" if args.cloud else "LOCAL"
 
     print(f"\n{'='*64}")
-    print(f"  Qwen Image Edit {args.pipeline} — Multi-Angle Batch Renderer")
+    if args.pipeline == "anypose":
+        print(f"  Qwen Image Edit — AnyPose Batch Renderer")
+    else:
+        print(f"  Qwen Image Edit {args.pipeline} — Multi-Angle Batch Renderer")
     print(f"{'='*64}")
     print(f"  Input   : {args.image}")
+    if args.pipeline == "anypose":
+        print(f"  Pose Dir: {args.pose_dir}  ({total} poses)")
     print(f"  Output  : {args.output}")
-    print(f"  Poses   : {total}  ({len(azimuths)} az × {len(elevations)} el × {len(distances)} dist)")
+    if args.pipeline != "anypose":
+        print(f"  Poses   : {total}  ({len(azimuths)} az × {len(elevations)} el × {len(distances)} dist)")
     print(f"  Steps   : {args.steps}  |  CFG: {args.guidance}  |  Seed: {args.seed}")
-    print(f"  Size    : {args.width}×{args.height}")
     print(f"  Pipeline: {args.pipeline}")
     print(f"  Target  : {mode}" + (f"  (concurrency: {args.concurrency})" if args.cloud else ""))
     print(f"{'='*64}\n")
 
     if args.dry_run:
-        for i, (az, el, dist, prompt, fname) in enumerate(jobs, 1):
-            print(f"  [{i:3d}/{total}] {prompt}")
+        for i, job in enumerate(jobs, 1):
+            prompt = job[3]
+            fname = job[4]
+            print(f"  [{i:3d}/{total}] {prompt[:80]}")
             print(f"           → {fname}\n")
         print(f"Total: {total} images. Remove --dry-run to execute.")
         return

@@ -1,6 +1,12 @@
 __pycache__/
 *.pyc
 multi_angle_output*/
+anypose_output*/
+anypose_test/
+pose-depot/
+*.avi
+*.webp
 *.png
 *.jpg
 *.jpeg
+!poses/**/*.png
