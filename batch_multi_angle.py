@@ -108,6 +108,35 @@ def safe_filename(azimuth, elevation, distance):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# EXPRESSIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+EXPRESSIONS = {
+    "neutral":       "Change to a calm, neutral expression with a relaxed face and loose, natural posture.",
+    "happy":         "Change to a genuinely happy smile with bright eyes, shoulders lifted slightly and head tilted with warmth.",
+    "laughing":      "Change to laughing out loud with an open mouth, squinted eyes, head thrown back slightly and shoulders shaking.",
+    "smirk":         "Change to a subtle smirk with one corner of the mouth raised, chin tilted down slightly with a knowing look.",
+    "sad":           "Change to a sad, sorrowful look with downturned mouth and drooping eyes, shoulders slumped and head bowed slightly.",
+    "crying":        "Change to crying with tears streaming down the cheeks, face scrunched in pain, hands raised near the face.",
+    "angry":         "Change to an angry scowl with furrowed brows and clenched jaw, shoulders squared and tensed, leaning forward slightly.",
+    "disgusted":     "Change to a look of disgust with a wrinkled nose and curled upper lip, head pulled back and turned slightly away.",
+    "surprised":     "Change to wide-eyed surprise with raised eyebrows and open mouth, shoulders pulled up and body leaning back slightly.",
+    "fearful":       "Change to a fearful, scared look with wide eyes and tense mouth, shoulders hunched and body shrinking back.",
+    "confused":      "Change to a confused look with one raised eyebrow and a slight frown, head tilted to the side.",
+    "determined":    "Change to a fierce, determined look with a set jaw and focused eyes, chin raised and chest forward.",
+    "flirty":        "Change to a playful, mischievous look with a warm smile and slightly raised eyebrow, head tilted gently.",
+    "contempt":      "Change to a contemptuous facial expression with a slight sneer and raised chin, keep the same background.",
+    "embarrassed":   "Change to an embarrassed blush with averted gaze and a sheepish smile, shoulders drawn in and head ducked.",
+    "sleepy":        "Change to a neutral relaxed expression but lower the eyelids about a third of the way closed. Keep eyebrows in their natural position, just slightly relaxed. Closed mouth with barely upturned lip corners, fully relaxed jaw, serene surrendered expression.",
+}
+
+EXPRESSION_PREFIX = (
+    "Keep the same outfit, hairstyle, hair color, background, lighting, "
+    "and identity. Clothing should move naturally with the body. "
+)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ANYPOSE DEFAULT PROMPT
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -144,6 +173,11 @@ def build_workflow(
         return build_workflow_anypose(
             image_filename, pose_image_filename, prompt, seed, steps,
             guidance_scale, lora_strength_lightning, filename_prefix,
+        )
+    if pipeline == "expressions":
+        return build_workflow_expressions(
+            image_filename, prompt, seed, steps, guidance_scale,
+            lora_strength_lightning, filename_prefix,
         )
     return build_workflow_2511(
         image_filename, azimuth, elevation, distance,
@@ -447,6 +481,147 @@ def build_workflow_2509(
                 "positive": ["162:17", 0],
                 "negative": ["162:14", 0],
                 "latent_image": ["162:13", 0],
+            },
+        },
+    }
+
+
+def build_workflow_expressions(
+    image_filename, prompt,
+    seed=42, steps=4, guidance_scale=1.0,
+    lora_strength_lightning=1.0, filename_prefix="expression",
+):
+    """
+    Build a ComfyUI API-format workflow for expression editing.
+    Uses 2511 base model + Lightning LoRA with a text prompt.
+    """
+    return {
+        # ── Load input image ──────────────────────────────────────
+        "1": {
+            "class_type": "LoadImage",
+            "inputs": {"image": image_filename},
+        },
+        # ── Save output ───────────────────────────────────────────
+        "10": {
+            "class_type": "SaveImage",
+            "inputs": {
+                "filename_prefix": filename_prefix,
+                "images": ["9", 0],
+            },
+        },
+        # ── VAE ───────────────────────────────────────────────────
+        "20": {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "qwen_image_vae.safetensors"},
+        },
+        # ── CLIP ──────────────────────────────────────────────────
+        "21": {
+            "class_type": "CLIPLoader",
+            "inputs": {
+                "clip_name": "qwen_2.5_vl_7b.safetensors",
+                "type": "qwen_image",
+                "device": "default",
+            },
+        },
+        # ── Model loading ─────────────────────────────────────────
+        "30": {
+            "class_type": "UNETLoader",
+            "inputs": {
+                "unet_name": "qwen_image_edit_2511_bf16.safetensors",
+                "weight_dtype": "default",
+            },
+        },
+        # ── Lightning LoRA ────────────────────────────────────────
+        "31": {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+                "strength_model": lora_strength_lightning,
+                "model": ["30", 0],
+            },
+        },
+        # ── Model patching ────────────────────────────────────────
+        "34": {
+            "class_type": "ModelSamplingAuraFlow",
+            "inputs": {
+                "shift": 3.1,
+                "model": ["31", 0],
+            },
+        },
+        "35": {
+            "class_type": "CFGNorm",
+            "inputs": {
+                "strength": guidance_scale,
+                "model": ["34", 0],
+            },
+        },
+        # ── Image scaling ─────────────────────────────────────────
+        "40": {
+            "class_type": "FluxKontextImageScale",
+            "inputs": {
+                "image": ["1", 0],
+            },
+        },
+        # ── Positive conditioning ─────────────────────────────────
+        "50": {
+            "class_type": "TextEncodeQwenImageEditPlus",
+            "inputs": {
+                "prompt": prompt,
+                "clip": ["21", 0],
+                "vae": ["20", 0],
+                "image1": ["40", 0],
+            },
+        },
+        # ── Negative conditioning (empty prompt) ──────────────────
+        "51": {
+            "class_type": "TextEncodeQwenImageEditPlus",
+            "inputs": {
+                "prompt": "",
+                "clip": ["21", 0],
+                "vae": ["20", 0],
+                "image1": ["40", 0],
+            },
+        },
+        # ── Reference latent methods ──────────────────────────────
+        "52": {
+            "class_type": "FluxKontextMultiReferenceLatentMethod",
+            "inputs": {
+                "reference_latents_method": "index_timestep_zero",
+                "conditioning": ["50", 0],
+            },
+        },
+        "53": {
+            "class_type": "FluxKontextMultiReferenceLatentMethod",
+            "inputs": {
+                "reference_latents_method": "index_timestep_zero",
+                "conditioning": ["51", 0],
+            },
+        },
+        # ── VAE Encode / Decode ───────────────────────────────────
+        "60": {
+            "class_type": "VAEEncode",
+            "inputs": {
+                "pixels": ["40", 0],
+                "vae": ["20", 0],
+            },
+        },
+        "9": {
+            "class_type": "VAEDecode",
+            "inputs": {
+                "samples": ["70", 0],
+                "vae": ["20", 0],
+            },
+        },
+        # ── KSampler ─────────────────────────────────────────────
+        "70": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": seed, "steps": steps, "cfg": guidance_scale,
+                "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
+                "model": ["35", 0],
+                "positive": ["52", 0],
+                "negative": ["53", 0],
+                "latent_image": ["60", 0],
             },
         },
     }
@@ -1039,8 +1214,8 @@ def main():
     p.add_argument("--azimuths", default=None, help="Subset, e.g. 0,90,180,270")
     p.add_argument("--elevations", default=None, help="Subset, e.g. -30,0,30,60")
     p.add_argument("--distances", default=None, help="Subset, e.g. 0.6,1.0,1.8")
-    p.add_argument("--pipeline", default="2511", choices=["2509", "2511", "anypose"],
-                   help="Model pipeline: 2509, 2511 (default), or anypose")
+    p.add_argument("--pipeline", default="2511", choices=["2509", "2511", "anypose", "expressions"],
+                   help="Model pipeline: 2509, 2511 (default), anypose, or expressions")
     p.add_argument("--pose-dir", default=None,
                    help="Directory of pose images (required for --pipeline anypose)")
     p.add_argument("--prompt-append", default="",
@@ -1071,7 +1246,15 @@ def main():
 
     suffix = f" {args.prompt_append}" if args.prompt_append else ""
 
-    if args.pipeline == "anypose":
+    if args.pipeline == "expressions":
+        # Expressions: iterate over predefined expression prompts
+        jobs = [
+            (None, None, None,
+             EXPRESSION_PREFIX + desc + suffix,
+             f"expr_{name}.png")
+            for name, desc in EXPRESSIONS.items()
+        ]
+    elif args.pipeline == "anypose":
         # AnyPose: iterate over pose images from a directory
         if not args.pose_dir:
             sys.exit("ERROR: --pose-dir is required for --pipeline anypose")
@@ -1103,14 +1286,18 @@ def main():
     print(f"\n{'='*64}")
     if args.pipeline == "anypose":
         print(f"  Qwen Image Edit — AnyPose Batch Renderer")
+    elif args.pipeline == "expressions":
+        print(f"  Qwen Image Edit — Expression Batch Renderer")
     else:
         print(f"  Qwen Image Edit {args.pipeline} — Multi-Angle Batch Renderer")
     print(f"{'='*64}")
     print(f"  Input   : {args.image}")
     if args.pipeline == "anypose":
         print(f"  Pose Dir: {args.pose_dir}  ({total} poses)")
+    elif args.pipeline == "expressions":
+        print(f"  Expressions: {total}")
     print(f"  Output  : {args.output}")
-    if args.pipeline != "anypose":
+    if args.pipeline not in ("anypose", "expressions"):
         print(f"  Poses   : {total}  ({len(azimuths)} az × {len(elevations)} el × {len(distances)} dist)")
     print(f"  Steps   : {args.steps}  |  CFG: {args.guidance}  |  Seed: {args.seed}")
     print(f"  Pipeline: {args.pipeline}")

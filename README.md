@@ -17,6 +17,7 @@ When training LoRAs or building 3D assets, you often need systematic multi-angle
 | **2511** (default) | [fal Multi-Angles](https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA) | 96 (8 az x 4 el x 3 dist) | `QwenMultiangleCameraNode` |
 | **2509** | [dx8152 Multi-Angles](https://huggingface.co/dx8152/Qwen-Edit-2509-Multiple-angles) | 72 (8 az x 3 el x 3 dist) | Bilingual text prompts |
 | **anypose** | [lilylilith/AnyPose](https://huggingface.co/lilylilith/AnyPose) | Per pose image | Pose transfer from reference images |
+| **expressions** | Qwen-Image-Edit-2511 + Lightning | 16 emotions | Prompt-driven facial expression editing |
 
 ### Multi-Angle Grid (2511 / 2509)
 
@@ -31,6 +32,12 @@ When training LoRAs or building 3D assets, you often need systematic multi-angle
 Transfers poses from reference images (OpenPose skeletons, photos, etc.) onto your subject. Pose images are automatically padded to square and background-matched to the reference image before upload.
 
 ![AnyPose example output](examples/poses_4x4.jpg)
+
+### Expressions
+
+Generates 16 facial expression variations from a single image using Qwen Image Edit 2511 with prompt-driven editing. Expressions include body language cues that carry the emotion. Included expressions: neutral, happy, laughing, smirk, sad, crying, angry, disgusted, surprised, fearful, confused, determined, flirty, contempt, embarrassed, sleepy.
+
+![Expressions example output](examples/expressions_4x4.jpg)
 
 ## Included Pose Images
 
@@ -60,6 +67,9 @@ python batch_multi_angle.py --image photo.png --cloud --pipeline 2509
 # AnyPose: transfer poses from a directory of pose images
 python batch_multi_angle.py --image photo.png --cloud --pipeline anypose --pose-dir ./poses/F
 
+# Expressions: generate 16 facial expression variations
+python batch_multi_angle.py --image photo.png --cloud --pipeline expressions
+
 # Different seed (output dir auto-named by pipeline + seed)
 python batch_multi_angle.py --image photo.png --cloud --seed 123
 
@@ -79,7 +89,7 @@ python batch_multi_angle.py --image photo.png --cloud --dry-run
 |------|---------|-------------|
 | `--image` | (required) | Input image path |
 | `--cloud` | off | Use Comfy Cloud (otherwise targets local ComfyUI) |
-| `--pipeline` | `2511` | `2509`, `2511`, or `anypose` |
+| `--pipeline` | `2511` | `2509`, `2511`, `anypose`, or `expressions` |
 | `--pose-dir` | — | Directory of pose images (required for `anypose`) |
 | `--output` | auto | Output directory (default: `./multi_angle_output_{pipeline}_seed{seed}`) |
 | `--seed` | `42` | Random seed |
@@ -107,6 +117,10 @@ az090_el-30_d0.6_right_side_view_lowangle_shot_closeup.png
 # AnyPose
 pose_2F_Hand_on_Hip_OpenPoseFull.png
 pose_15F_Flying_Superhero_OpenPoseFull_3.png
+
+# Expressions
+expr_happy.png
+expr_surprised.png
 ```
 
 Existing files are automatically skipped, so you can safely re-run to fill in any gaps.
