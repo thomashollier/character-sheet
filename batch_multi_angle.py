@@ -173,6 +173,40 @@ POSES = {
     "shy_stance":     "Change the pose to a shy, bashful stance. Hands clasped together in front of the body at waist level, fingers intertwined. Shoulders raised slightly, one foot turned inward pigeon-toed. Head tilted down with eyes looking up.",
 }
 
+ANGLES_PROMPT = {}
+_GAZE_BRAID = "The character's eyes and gaze face the same direction the body is pointing. The braids drape in front of the shoulders, not behind."
+_DIRECTIONS = [
+    ("front",       "000", "front-facing",                                          ""),
+    ("front_right", "045", "from a 3/4 front-right angle",                          "Rotate the camera 45 degrees to the right."),
+    ("right",       "090", "in right side profile",                                 "Rotate the camera 90 degrees to the right."),
+    ("back_right",  "135", "from behind and slightly to the right",                 "Rotate the camera 135 degrees to the right."),
+    ("back",        "180", "from directly behind",                                  "Rotate the camera 180 degrees to show the back."),
+    ("back_left",   "225", "from behind and slightly to the left",                  "Rotate the camera 135 degrees to the left."),
+    ("left",        "270", "in left side profile",                                  "Rotate the camera 90 degrees to the left."),
+    ("front_left",  "315", "from a 3/4 front-left angle",                           "Rotate the camera 45 degrees to the left."),
+]
+for _name, _deg, _view, _rotate in _DIRECTIONS:
+    _r = f"{_rotate} " if _rotate else ""
+    ANGLES_PROMPT[f"{_name}_close"]  = f"{_r}Close-up shot showing head and shoulders {_view}. {_GAZE_BRAID}"
+    ANGLES_PROMPT[f"{_name}_medium"] = f"{_r}Move the camera much closer to the subject. The image should only contain the upper half of the body, from head to waist {_view}. The lower body is cut off by the bottom of the frame. {_GAZE_BRAID}"
+    ANGLES_PROMPT[f"{_name}_wide"]   = f"{_r}Full body wide shot {_view}, showing the entire figure from head to toe. {_GAZE_BRAID}"
+    # Elevated 30° versions (camera above looking down)
+    _elev_cam = "The camera is higher up, at head height plus 3 feet, angled slightly downward. The horizon line is low in the frame. Do not roll or rotate the camera, keep it perfectly level left to right."
+    _neutral_gaze = "Keep the exact same neutral facial expression as the original image. The character looks straight ahead in the direction the body faces, not at the camera. The braids drape in front of the shoulders, not behind."
+    ANGLES_PROMPT[f"{_name}_elev_close"]  = f"{_r}{_elev_cam} Close-up shot showing head and shoulders {_view}. {_neutral_gaze}"
+    ANGLES_PROMPT[f"{_name}_elev_medium"] = f"{_r}{_elev_cam} Move the camera much closer. The image should only contain the upper half of the body from head to waist {_view}. The lower body is cut off by the bottom of the frame. {_neutral_gaze}"
+    ANGLES_PROMPT[f"{_name}_elev_wide"]   = f"{_r}{_elev_cam} Full body wide shot {_view}, showing the entire figure from head to toe. {_neutral_gaze}"
+    # Low angle 30° versions (camera below looking up)
+    _low_cam = "The camera is lower, at knee height, angled slightly upward. The horizon line is high in the frame. Do not roll or rotate the camera, keep it perfectly level left to right."
+    ANGLES_PROMPT[f"{_name}_low_close"]  = f"{_r}{_low_cam} Close-up shot showing head and shoulders {_view}. {_neutral_gaze}"
+    ANGLES_PROMPT[f"{_name}_low_medium"] = f"{_r}{_low_cam} Move the camera much closer. The image should only contain the upper half of the body from head to waist {_view}. The lower body is cut off by the bottom of the frame. {_neutral_gaze}"
+    ANGLES_PROMPT[f"{_name}_low_wide"]   = f"{_r}{_low_cam} Full body wide shot {_view}, showing the entire figure from head to toe. {_neutral_gaze}"
+
+ANGLES_PROMPT_PREFIX = (
+    "Keep the same outfit, hairstyle, hair color, identity, and the same plain solid color background. "
+    "Do not change the background color or add any scene elements. "
+)
+
 POSES_PREFIX = (
     "Keep the same outfit, hairstyle, hair color, identity, and the same plain solid color background. "
     "Do not change the background color or add any scene elements. "
@@ -223,7 +257,7 @@ def build_workflow(
             image_filename, pose_image_filename, prompt, seed, steps,
             guidance_scale, lora_strength_lightning, filename_prefix,
         )
-    if pipeline in ("expressions", "lighting", "outfits", "poses_prompt"):
+    if pipeline in ("expressions", "lighting", "outfits", "poses_prompt", "angles_prompt"):
         return build_workflow_expressions(
             image_filename, prompt, seed, steps, guidance_scale,
             lora_strength_lightning, filename_prefix,
@@ -1284,8 +1318,8 @@ def main():
     p.add_argument("--elevations", default=None, help="Subset, e.g. -30,0,30,60")
     p.add_argument("--distances", default=None, help="Subset, e.g. 0.6,1.0,1.8")
     p.add_argument("--pipeline", default="2511",
-                   choices=["2509", "2511", "anypose", "expressions", "lighting", "outfits", "poses_prompt"],
-                   help="Model pipeline: 2509, 2511 (default), anypose, expressions, lighting, outfits, or poses_prompt")
+                   choices=["2509", "2511", "anypose", "expressions", "lighting", "outfits", "poses_prompt", "angles_prompt"],
+                   help="Model pipeline: 2509, 2511 (default), anypose, expressions, lighting, outfits, poses_prompt, or angles_prompt")
     p.add_argument("--pose-dir", default=None,
                    help="Directory of pose images (required for --pipeline anypose)")
     p.add_argument("--prompt-append", default="",
@@ -1316,7 +1350,14 @@ def main():
 
     suffix = f" {args.prompt_append}" if args.prompt_append else ""
 
-    if args.pipeline == "poses_prompt":
+    if args.pipeline == "angles_prompt":
+        jobs = [
+            (None, None, None,
+             ANGLES_PROMPT_PREFIX + desc + suffix,
+             f"angle_{name}.png")
+            for name, desc in ANGLES_PROMPT.items()
+        ]
+    elif args.pipeline == "poses_prompt":
         jobs = [
             (None, None, None,
              POSES_PREFIX + desc + suffix,
@@ -1376,6 +1417,8 @@ def main():
     print(f"\n{'='*64}")
     if args.pipeline == "anypose":
         print(f"  Qwen Image Edit — AnyPose Batch Renderer")
+    elif args.pipeline == "angles_prompt":
+        print(f"  Qwen Image Edit — Prompt Angle Batch Renderer")
     elif args.pipeline == "poses_prompt":
         print(f"  Qwen Image Edit — Prompt Pose Batch Renderer")
     elif args.pipeline == "expressions":
@@ -1390,6 +1433,8 @@ def main():
     print(f"  Input   : {args.image}")
     if args.pipeline == "anypose":
         print(f"  Pose Dir: {args.pose_dir}  ({total} poses)")
+    elif args.pipeline == "angles_prompt":
+        print(f"  Angles: {total}")
     elif args.pipeline == "poses_prompt":
         print(f"  Poses: {total}")
     elif args.pipeline == "expressions":
@@ -1399,7 +1444,7 @@ def main():
     elif args.pipeline == "outfits":
         print(f"  Outfits: {total} variations")
     print(f"  Output  : {args.output}")
-    if args.pipeline not in ("anypose", "expressions", "lighting", "outfits", "poses_prompt"):
+    if args.pipeline not in ("anypose", "expressions", "lighting", "outfits", "poses_prompt", "angles_prompt"):
         print(f"  Poses   : {total}  ({len(azimuths)} az × {len(elevations)} el × {len(distances)} dist)")
     print(f"  Steps   : {args.steps}  |  CFG: {args.guidance}  |  Seed: {args.seed}")
     print(f"  Pipeline: {args.pipeline}")
