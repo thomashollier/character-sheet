@@ -30,12 +30,6 @@ When training LoRAs or building character assets, you often need systematic mult
 
 ![Multi-angle example output](examples/angles_4x4.jpg)
 
-### AnyPose
-
-Transfers poses from reference images (OpenPose skeletons, photos, etc.) onto your subject. Pose images are automatically padded to square and background-matched to the reference image before upload.
-
-![AnyPose example output](examples/poses_4x4.jpg)
-
 ### Prompt Poses
 
 Generates 16 body pose variations using text prompts only (no pose reference images needed). Each prompt describes specific limb positions, body angles, and activities.
@@ -190,6 +184,12 @@ Existing files are automatically skipped, so you can safely re-run to fill in an
 3. Connects a WebSocket to receive real-time execution results
 4. Submits all workflows with concurrency control
 5. Downloads completed renders as they finish via WebSocket output events
+
+### AnyPose
+
+Transfers poses from reference images (OpenPose skeletons, photos, etc.) onto your subject using the [lilylilith/AnyPose](https://huggingface.co/lilylilith/AnyPose) LoRA. Pose images are automatically padded to square and background-matched to the reference image before upload.
+
+![AnyPose example output](examples/poses_4x4.jpg)
 
 ## License
 
