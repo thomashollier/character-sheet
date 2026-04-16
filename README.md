@@ -1,8 +1,8 @@
-# Multi-Angle & Pose Batch Renderer
+# Character Sheet Generator
 
-Batch-render camera angle variations and pose transfers from a single image using Qwen Image Edit models on [Comfy Cloud](https://cloud.comfy.org).
+Batch-render camera angle variations, pose transfers, and facial expression sheets from a single image using Qwen Image Edit models on [Comfy Cloud](https://cloud.comfy.org).
 
-When training LoRAs or building 3D assets, you often need systematic multi-angle renders or posed variations of a subject. Manually running ComfyUI workflows for every combination is tedious. This script automates the entire process — submit one image, get back a complete set of variations.
+When training LoRAs or building character assets, you often need systematic multi-angle renders, posed variations, and expression sheets of a subject. Manually running ComfyUI workflows for every combination is tedious. This script automates the entire process — submit one image, get back a complete character sheet.
 
 ### Original
 
