@@ -103,6 +103,27 @@ OUTFITS = {
 
 Add or remove entries as needed — the script will automatically generate one image per entry. Use `--dry-run` to preview all prompts before rendering.
 
+## Presentation Template
+
+Generate a PowerPoint presentation as a starting shell for your character sheet. The output is a template to build from — not a client-ready document, but a structured starting point with your renders laid out across slides.
+
+```bash
+python make_presentation.py --image ref.png --name "Nora" \
+  --desc "A curious 10-year-old adventurer" \
+  --output-dir ./pose_full_output
+```
+
+Produces a 16:9 PPTX with:
+- **Title slide** — A-pose reference with character name and description
+- **Multi-angle views** — 8 selected camera angles
+- **Skeleton analysis** — Renders paired with DWPose extractions
+- **Expressions** — 4x4 grid of facial expression variations (if available)
+- **Outfits & Lighting** — Outfit and lighting variations side by side (if available)
+
+The script auto-discovers expression, outfit, and lighting images from sibling output directories. You can also specify them explicitly with `--expressions-dir`, `--outfits-dir`, and `--lighting-dir`.
+
+Requires `python-pptx` (`pip install python-pptx`).
+
 ## Included Pose Images
 
 The `poses/` directory contains OpenPose skeleton images from [Pose Depot](https://github.com/pose-depot/pose-depot):

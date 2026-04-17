@@ -236,7 +236,90 @@ def make_detail_slide(prs, images, skeletons, title="Poses & Skeleton Analysis")
                  label, font_size=10, color=ACCENT_COLOR, alignment=PP_ALIGN.CENTER)
 
 
-def generate_presentation(ref_image, char_name, char_desc, output_dir, output_file=None):
+def make_expressions_slide(prs, images):
+    """Page 4: 4x4 grid of facial expressions."""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    set_slide_bg(slide, BG_COLOR)
+
+    add_text(slide, Inches(0.6), Inches(0.3), Inches(12), Inches(0.6),
+             "Expressions", font_size=28, color=TEXT_COLOR, bold=True)
+
+    add_text(slide, Inches(0.6), Inches(0.85), Inches(12), Inches(0.4),
+             "Facial expression variations driven by prompt editing",
+             font_size=14, color=SUBTLE_COLOR)
+
+    picks = images[:16]
+    cols, rows = 4, 4
+    margin_x = Inches(0.6)
+    margin_top = Inches(1.3)
+    spacing = Inches(0.12)
+    avail_w = int(SLIDE_WIDTH - margin_x * 2 - spacing * (cols - 1))
+    avail_h = int(SLIDE_HEIGHT - margin_top - Inches(0.3) - spacing * (rows - 1))
+    cell_w = avail_w // cols
+    cell_h = avail_h // rows
+
+    for i, img_path in enumerate(picks):
+        r, c = i // cols, i % cols
+        left = int(margin_x + c * (cell_w + spacing))
+        top = int(margin_top + r * (cell_h + spacing))
+        add_image_fitted(slide, img_path, left, top, cell_w, cell_h)
+
+        # Label from filename
+        basename = os.path.splitext(os.path.basename(img_path))[0]
+        label = basename.replace("expr_", "").replace("_", " ").title()
+        add_text(slide, left, top + cell_h - Inches(0.02), cell_w, Inches(0.3),
+                 label, font_size=9, color=SUBTLE_COLOR, alignment=PP_ALIGN.CENTER)
+
+
+def make_outfits_lighting_slide(prs, outfits, lighting):
+    """Page 5: Outfits on top row, lighting on bottom row."""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    set_slide_bg(slide, BG_COLOR)
+
+    add_text(slide, Inches(0.6), Inches(0.3), Inches(12), Inches(0.6),
+             "Outfits & Lighting", font_size=28, color=TEXT_COLOR, bold=True)
+
+    margin_x = Inches(0.8)
+    spacing_x = Inches(0.25)
+
+    # Top row: Outfits
+    add_text(slide, Inches(0.6), Inches(1.0), Inches(3), Inches(0.35),
+             "Outfits", font_size=16, color=ACCENT_COLOR)
+
+    outfit_picks = outfits[:4]
+    cols = len(outfit_picks) if outfit_picks else 4
+    row_top = Inches(1.4)
+    row_h = int((SLIDE_HEIGHT - Inches(3.2)) / 2)
+    avail_w = int(SLIDE_WIDTH - margin_x * 2 - spacing_x * (cols - 1))
+    cell_w = avail_w // cols if cols > 0 else avail_w
+
+    for i, img_path in enumerate(outfit_picks):
+        left = int(margin_x + i * (cell_w + spacing_x))
+        add_image_fitted(slide, img_path, left, int(row_top), cell_w, row_h)
+        basename = os.path.splitext(os.path.basename(img_path))[0]
+        label = basename.replace("outfit_", "").replace("_", " ").title()
+        add_text(slide, left, int(row_top) + row_h, cell_w, Inches(0.3),
+                 label, font_size=10, color=SUBTLE_COLOR, alignment=PP_ALIGN.CENTER)
+
+    # Bottom row: Lighting
+    row2_top = int(row_top) + row_h + Inches(0.6)
+    add_text(slide, Inches(0.6), row2_top - Inches(0.35), Inches(3), Inches(0.35),
+             "Lighting", font_size=16, color=ACCENT_COLOR)
+
+    light_picks = lighting[:4]
+    cols = len(light_picks) if light_picks else 4
+
+    for i, img_path in enumerate(light_picks):
+        left = int(margin_x + i * (cell_w + spacing_x))
+        add_image_fitted(slide, img_path, left, int(row2_top), cell_w, row_h)
+        basename = os.path.splitext(os.path.basename(img_path))[0]
+        label = basename.replace("light_", "").replace("_", " ").title()
+        add_text(slide, left, int(row2_top) + row_h, cell_w, Inches(0.3),
+                 label, font_size=10, color=SUBTLE_COLOR, alignment=PP_ALIGN.CENTER)
+
+
+def generate_presentation(ref_image, char_name, char_desc, output_dir, output_file=None,
+                          expressions_dir=None, outfits_dir=None, lighting_dir=None):
     """Generate the full character sheet presentation."""
     if output_file is None:
         output_file = os.path.join(output_dir, f"{char_name.lower().replace(' ', '_')}_character_sheet.pptx")
@@ -276,6 +359,32 @@ def generate_presentation(ref_image, char_name, char_desc, output_dir, output_fi
 
     # Page 3: Renders + skeletons
     make_detail_slide(prs, slide3_picks, skeleton_images)
+
+    # Page 4: Expressions
+    base_dir = os.path.dirname(os.path.abspath(output_dir))
+    expr_search = [expressions_dir] if expressions_dir else glob.glob(os.path.join(base_dir, "*expressions*"))
+    expr_images = []
+    for d in expr_search:
+        if d and os.path.isdir(d):
+            expr_images.extend(sorted(glob.glob(os.path.join(d, "expr_*.png"))))
+    if expr_images:
+        make_expressions_slide(prs, expr_images)
+
+    # Page 5: Outfits & Lighting
+    outfit_search = [outfits_dir] if outfits_dir else glob.glob(os.path.join(base_dir, "*outfits*"))
+    outfit_images = []
+    for d in outfit_search:
+        if d and os.path.isdir(d):
+            outfit_images.extend(sorted(glob.glob(os.path.join(d, "outfit_*.png"))))
+
+    light_search = [lighting_dir] if lighting_dir else glob.glob(os.path.join(base_dir, "*lighting*"))
+    light_images = []
+    for d in light_search:
+        if d and os.path.isdir(d):
+            light_images.extend(sorted(glob.glob(os.path.join(d, "light_*.png"))))
+
+    if outfit_images or light_images:
+        make_outfits_lighting_slide(prs, outfit_images, light_images)
 
     prs.save(output_file)
     print(f"Saved presentation: {output_file}")
@@ -319,9 +428,13 @@ def main():
     parser.add_argument("--desc", default="", help="Character description")
     parser.add_argument("--output-dir", required=True, help="Directory with rendered images")
     parser.add_argument("--output", default=None, help="Output .pptx path")
+    parser.add_argument("--expressions-dir", default=None, help="Directory with expression images")
+    parser.add_argument("--outfits-dir", default=None, help="Directory with outfit images")
+    parser.add_argument("--lighting-dir", default=None, help="Directory with lighting images")
     args = parser.parse_args()
 
-    generate_presentation(args.image, args.name, args.desc, args.output_dir, args.output)
+    generate_presentation(args.image, args.name, args.desc, args.output_dir, args.output,
+                          args.expressions_dir, args.outfits_dir, args.lighting_dir)
 
 
 if __name__ == "__main__":
