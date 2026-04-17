@@ -119,12 +119,13 @@ Produces a 16:9 PPTX with:
 - **Title slide** — A-pose reference with character name and description
 - **Multi-angle views** — 8 selected camera angles
 - **Skeleton analysis** — Renders paired with DWPose extractions
-- **Expressions** — 4x4 grid of facial expression variations (if available)
+- **Poses** — 8 prompt-driven body pose variations (if available)
+- **Expressions** — 8 facial expression variations (if available)
 - **Outfits & Lighting** — Outfit and lighting variations side by side (if available)
 
-The script auto-discovers expression, outfit, and lighting images from sibling output directories. You can also specify them explicitly with `--expressions-dir`, `--outfits-dir`, and `--lighting-dir`.
+![Presentation template](examples/presentation_3x2.jpg)
 
-Requires `python-pptx` (`pip install python-pptx`).
+The script auto-discovers expression, outfit, lighting, and pose images from sibling output directories. You can also specify them explicitly with `--expressions-dir`, `--outfits-dir`, `--lighting-dir`, and `--poses-dir`.
 
 ## Included Pose Images
 
@@ -136,7 +137,7 @@ The `poses/` directory contains OpenPose skeleton images from [Pose Depot](https
 ## Setup
 
 ```bash
-pip install aiohttp Pillow numpy python-pptx
+pip install -r requirements.txt
 export COMFY_CLOUD_API_KEY="your-key-here"  # from https://cloud.comfy.org
 ```
 
