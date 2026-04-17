@@ -4,7 +4,7 @@ A character sheet is the foundational document in any visual production pipeline
 
 This tool allows artists to iterate and experiment with their character designs in a more streamlined manner — generating up to 96 camera angles, 16 body poses, 16 facial expressions, lighting and outfit variations, and full skeleton extraction from a single reference image. The results still depend on artistic intent; careful prompting, thoughtful angle selection, and curation of the output are what make the difference.
 
-The output is assembled into a PowerPoint presentation template — a structured starting point for further refinement, not a finished deliverable.
+The output is assembled into a PowerPoint presentation template.
 
 Built on [Qwen Image Edit](https://huggingface.co/collections/Qwen/qwen-image-edit-682e380fc18bf79d426663a2) models running on [Comfy Cloud](https://cloud.comfy.org), with inline [DWPose](https://github.com/Fannovel16/comfyui_controlnet_aux) skeleton extraction for downstream 3D and animation workflows.
 
