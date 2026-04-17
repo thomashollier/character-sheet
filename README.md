@@ -71,6 +71,12 @@ Renders the character in different outfits while preserving identity and pose.
 
 ![Outfits example output](examples/outfits_1x4.jpg)
 
+### AnyPose
+
+Transfers poses from reference images (OpenPose skeletons, photos, etc.) onto your subject using the [lilylilith/AnyPose](https://huggingface.co/lilylilith/AnyPose) LoRA. Pose images are automatically padded to square and background-matched to the reference image before upload.
+
+![AnyPose example output](examples/poses_4x4.jpg)
+
 ### Customizing Lighting & Outfit Prompts
 
 The `lighting` and `outfits` pipelines ship with default prompts designed for the example character (a young girl in a peace sign t-shirt). **You should customize these prompts for your own character.** A soldier, a robot, or a fantasy elf would each need different outfit and lighting descriptions.
@@ -205,12 +211,6 @@ Existing files are automatically skipped, so you can safely re-run to fill in an
 3. Connects a WebSocket to receive real-time execution results
 4. Submits all workflows with concurrency control
 5. Downloads completed renders as they finish via WebSocket output events
-
-### AnyPose
-
-Transfers poses from reference images (OpenPose skeletons, photos, etc.) onto your subject using the [lilylilith/AnyPose](https://huggingface.co/lilylilith/AnyPose) LoRA. Pose images are automatically padded to square and background-matched to the reference image before upload.
-
-![AnyPose example output](examples/poses_4x4.jpg)
 
 ## License
 
