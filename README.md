@@ -6,7 +6,7 @@ This tool allows artists to iterate and experiment with their character designs 
 
 The output is assembled into a PowerPoint presentation template.
 
-Built on [Qwen Image Edit](https://huggingface.co/collections/Qwen/qwen-image-edit-682e380fc18bf79d426663a2) models running on [Comfy Cloud](https://cloud.comfy.org), with inline [DWPose](https://github.com/Fannovel16/comfyui_controlnet_aux) skeleton extraction for downstream 3D and animation workflows.
+Built on [Qwen Image Edit](https://huggingface.co/collections/Qwen/qwen-image-edit-682e380fc18bf79d426663a2) models running locally or on [cloud.comfy.org](https://cloud.comfy.org) (requires API access token), with inline [DWPose](https://github.com/Fannovel16/comfyui_controlnet_aux) skeleton extraction for downstream 3D and animation workflows.
 
 ### Original
 
