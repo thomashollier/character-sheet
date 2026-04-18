@@ -1,5 +1,5 @@
 <h1 align="center">Character Soup to Character Nuts</h1>
-<p align="center">AI assist for character assets from design sheets to rigged geometry</p>
+<h3 align="center">AI power-assist for character assets from design sheets to rigged geometry</h3>
 
 A character sheet is the foundational document in any visual production pipeline. In animation, games, comics, and AI-driven content, it defines how a character looks from every angle, in every pose, and with every expression — the single source of truth that keeps a character consistent across hundreds of shots, scenes, or generated images.
 
